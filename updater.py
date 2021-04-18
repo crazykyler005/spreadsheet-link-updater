@@ -11,7 +11,7 @@ def get_workbooks(dir_list):
 	wb_dirs = []
 	for dir_root in dir_list:
 		try:
-			[wb_dirs.append(os.path.join(dir_root,x)) for x in os.listdir(dir_root) if x.endswith(tuple(ext)) and x[0] is not "~"]
+			[wb_dirs.append(os.path.join(dir_root,x)) for x in os.listdir(dir_root) if x.endswith(tuple(ext)) and x[0] != "~"]
 		except FileNotFoundError as e:
 			create_log(str(e))
 
@@ -24,23 +24,28 @@ def create_log(message, console = True):
 		if console is True:
 			print(message)
 		f.write(message+'\n')
+
+def exit_message(message, exit_time):
+	create_log(message+'\n') #seperates run instance logs
+	time.sleep(exit_time)
+	quit()
 		
-def load_directories():
+def get_directoires():
 
 	file_name = 'directories.txt'
-	dir_list = ['#INCLUDE ALL FOLDERS LOCATIONS THAT CONTAIN THE EXCEL FILES WITH LINKED VARIABLES AND DELETE THIS LINE\n',
-				'C:\\North Arrow Enterprises LLC\\Projects - NAE - WHS - Main\\Folder Location X\n',
-				'C:\\North Arrow Enterprises LLC\\Projects - NAE - WHS - Main\\Folder Location Y']
+	dir_list = ['#INCLUDE ALL FOLDER LOCATIONS THAT CONTAIN THE EXCEL FILES WITH LINKED VARIABLES\n',
+				'C:\\Users\\Folder Location X\n',
+				'C:\\Users\\Folder Location Y']
 
 	try:
 		with open(file_name, 'r') as f:
 			lines = f.readlines()
 			dir_list = []
 			for line in lines:
+				if line[0] == '#': #allows for comments to be included
+					continue
 				if line[1:3] != ':\\':
-					create_log('Invalid links contained within directories. Please fix before running the application again.\n')
-					time.sleep(6)
-					quit()
+					exit_message('Invalid links contained within directories. Please fix before running the application again.\n', 6)
 					
 				dir_list.append(line.strip('\n'))
 
@@ -48,11 +53,7 @@ def load_directories():
 		with open(file_name, 'x') as f:
 			f.writelines(dir_list)
 
-		print('Created directories.txt where the application is being ran.')
-		time.sleep(2)
-		print('Update file with the correct folder locations before running the application again.')
-		time.sleep(6)
-		quit()
+		exit_message('Created directories.txt where the application is being ran. Update file with the correct folder locations before running the application again.', 6)
 	
 	return dir_list
 
@@ -61,6 +62,7 @@ def modifyFormula(wb_dir, model_num):
 	sheet = wb.active
 	currentRow = '3'
 	currentCol = 'B'
+	currentVal = sheet[currentCol+currentRow].value
 	#lowest reference character that can be used
 	intialRefChar = 'B'
 	#get the ascii val of char and increase it by model number
@@ -70,9 +72,11 @@ def modifyFormula(wb_dir, model_num):
 	ref_char_index = -3
 	
 	#checks if the design table name is included within sheet
-	if sheet[currentCol+currentRow].value is None:
+	if currentVal is None:
 		currentRow = '2'
-	if sheet[currentCol+currentRow].value.find('=') == -1:
+		currentVal = sheet[currentCol+currentRow].value
+
+	if type(currentVal) is not str or currentVal.find('=') == -1:
 		create_log(wb_dir.split('\\')[-1] + ' does not contain a formula in the expected cell. Skipped update operation.')
 		return False
 	
@@ -106,18 +110,23 @@ def check_reference(wb_dir):
 	if sheet[currentCol+currentRow].value is None:
 		currentRow = '2'
 	
+	if type(sheet[currentCol+currentRow].value) is not str or sheet[currentCol+currentRow].value.find('=') == -1:
+		return 0
+
 	#check if formula includes a $ where the cell is referenced
 	if sheet[currentCol+currentRow].value.split('!')[-1].find('$') == -1:
 		ref_char_index = -2
 	
 	ref_char = sheet[currentCol+currentRow].value[ref_char_index]
 	
-	#returns model number referenced.
+	#returns model number referenced. Model numbers are base off of the column value or character
 	return ord(ref_char) - ord(intialRefChar) + 1
 
 def run_macro(workbook_name, com_instance):
+
 	wb = com_instance.workbooks.open(workbook_name)
 	com_instance.AskToUpdateLinks = False
+
 	try:
 		#recalculate links
 		wb.UpdateLink(Name = wb.LinkSources())
@@ -151,17 +160,27 @@ def run_excel(workbook_dirs):
 
 if __name__ == "__main__":
 
+	dir_list = get_directoires()
 	workbook_dirs = get_workbooks(dir_list)
 	total_wbs = len(workbook_dirs)
 	modified_wbs = 0
-	print('Found ' + str(total_wbs) + ' workbooks to update')
 	model_num = 0
 
 	if workbook_dirs == []:
-		print("No excel file found within the application")
+		exit_message('No excel files found within the listed directories.\nClosing application', 4)
 	else:
-		create_log(str(workbook_dirs), console = False)
-		print("Parts are currently based off of the measurement from model " + str(check_reference(workbook_dirs[0])))
+		create_log('Found ' + str(total_wbs) + ' workbook(s) to update')
+
+		for wb in workbook_dirs: #check valid workbooks for model number currently being used
+			model_num = check_reference(wb)
+			if model_num == 0:
+				continue
+			break
+
+		if model_num == 0:
+			exit_message("None of the workbooks found within the given directories are in a format solidworks would recognize or they don't contain linked references.\nTry re-editing directories.txt and launch the application again", 5)
+
+		print("Parts are currently based off of the measurement from model " + str(model_num))
 		if input("Base design off other CPA model? Type y or n: ").lower() == 'y':
 			while True:
 				try:
@@ -175,15 +194,17 @@ if __name__ == "__main__":
 
 			print('Changing linked references...')
 
-			for wb_dir in workbook_dirs:
+			#[:] creates copy of array
+			for wb_dir in workbook_dirs[:]:
 				if modifyFormula(wb_dir, model_num) is not False:
 					modified_wbs += 1
+				else:
+					#remove from list of directories so that it doesn't get updated
+					workbook_dirs.remove(wb_dir)
 					
 	create_log(str(modified_wbs) + ' out of ' + str(total_wbs) + ' workbooks modified')
 	
 	if input("Update linked references? Type y or n: ").lower() == 'y':
-		create_log(str(run_excel(workbook_dirs)) + ' out of ' + str(total_wbs) + ' workbooks updated')
+		create_log(str(run_excel(workbook_dirs)) + ' out of ' + str(len(workbook_dirs)) + ' workbooks updated')
 
-	create_log(str(time.strftime("Completed operations at %m-%d %H:%M \n",time.localtime())))
-	time.sleep(5)
-	quit()
+	exit_message(str(time.strftime("Completed operations at %m-%d %H:%M",time.localtime())), 5)
