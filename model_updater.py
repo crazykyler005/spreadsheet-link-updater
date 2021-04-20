@@ -120,11 +120,12 @@ def check_reference(wb_dir):
 	ref_char = sheet[currentCol+currentRow].value[ref_char_index]
 	
 	#returns model number referenced. Model numbers are base off of the column value or character
+	wb.close()
 	return ord(ref_char) - ord(intialRefChar) + 1
 
-def run_macro(workbook_name, com_instance):
+def run_macro(wb_dir, com_instance):
 
-	wb = com_instance.workbooks.open(workbook_name)
+	wb = com_instance.workbooks.open(wb_dir)
 	com_instance.AskToUpdateLinks = False
 
 	try:
@@ -135,11 +136,9 @@ def run_macro(workbook_name, com_instance):
 		create_log(str(e))
 
 		wb.Close(True)
-		wb = None
 		return False
 
 	wb.Close(True)
-	wb = None
 	return True
 
 def run_excel(workbook_dirs):
@@ -154,7 +153,6 @@ def run_excel(workbook_dirs):
 			updated_wbs += 1
 		
 	xl_app.Quit()
-	xl = None
 
 	return updated_wbs
 
