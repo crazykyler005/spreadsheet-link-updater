@@ -2,7 +2,6 @@ import os
 import time
 import datetime
 from win32com.client import Dispatch
-from openpyxl import load_workbook
 
 def get_workbooks(dir_list):
 	#folder = subprocess.Popen(r'explorer /select,"C:\"')
@@ -57,9 +56,9 @@ def get_directoires():
 	
 	return dir_list
 
-def run_macro(workbook_name, com_instance):
+def run_macro(wb_dir, com_instance):
 
-	wb = com_instance.workbooks.open(workbook_name)
+	wb = com_instance.workbooks.open(wb_dir)
 	com_instance.AskToUpdateLinks = False
 
 	try:
@@ -67,14 +66,12 @@ def run_macro(workbook_name, com_instance):
 		wb.UpdateLink(Name = wb.LinkSources())
 
 	except:
-		create_log(workbook_name+" failed to update", False)
+		create_log(wb_dir + " failed to update", False)
 
 		wb.Close(True)
-		wb = None
 		return False
 
 	wb.Close(True)
-	wb = None
 	return True
 
 def run_excel(workbook_dirs):
@@ -89,7 +86,6 @@ def run_excel(workbook_dirs):
 			updated_wbs += 1
 		
 	xl_app.Quit()
-	xl = None
 
 	return updated_wbs
 
